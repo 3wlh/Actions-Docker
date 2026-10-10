@@ -1,4 +1,4 @@
-name: Build TraeWorkAssistant Portable
+name: Repository TraeWorkAssistant Compile
 
 on:
   workflow_dispatch:
