@@ -7,6 +7,12 @@ on:
         description: "仓库分支"
         required: false
         default: 'docker_main'
+        
+     upx:
+        description: "是否用 UPX 压缩二进制"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -57,6 +63,20 @@ jobs:
           RUSTFLAGS: '-C target-feature=+crt-static'
         run: cargo zigbuild --release -p aiwork-server --target ${{ matrix.target }}
 
+      - name: Install UPX
+        if: inputs.upx
+        uses: crazy-max/ghaction-upx@v4
+        with:
+          install-only: true
+      
+      - name: Compress binary with UPX
+        if: inputs.upx
+        working-directory: target/${{ matrix.target }}/release/
+        run: |
+          echo "压缩前: $(ls -lh aiwork-server | awk '{print $5}')"
+          upx -9 aiwork-server
+          echo "压缩后: $(ls -lh aiwork-server | awk '{print $5}')"
+      
       - name: Package bundle
         run: |
           mkdir -p pkg
