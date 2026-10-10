@@ -113,10 +113,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      
+      - name: Upload to Release
+        if: (steps.check.outputs.status == 'success')
+        uses: softprops/action-gh-release@master
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
-          tag_name: build-${{ github.run_number }}
-          name: TraeWorkAssistant Portable ${{ github.event.inputs.ref }}
+          tag_name: GitHub-Actions_AiWorkAssistant
+          name: Build：AiWorkAssistant
+          body: |
+            ## 软件信息：
+            - 编译时间：`${{ env.Time }}`
+            - SDK版本: `${{ inputs.version }}`
           files: aiwork-assistant-linux-*.tar.gz
