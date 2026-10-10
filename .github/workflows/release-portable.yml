@@ -1,10 +1,12 @@
-name: Release Portable Package
+name: Build TraeWorkAssistant Portable
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      ref:
+        description: '上游分支 / tag / commit'
+        required: false
+        default: 'docker_main'
 
 permissions:
   contents: write
@@ -20,8 +22,11 @@ jobs:
             target: aarch64-unknown-linux-musl
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout upstream source
         uses: actions/checkout@v4
+        with:
+          repository: smart-open/TraeWorkAssistant
+          ref: ${{ github.event.inputs.ref || 'docker_main' }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -52,30 +57,46 @@ jobs:
           RUSTFLAGS: '-C target-feature=+crt-static'
         run: cargo zigbuild --release -p aiwork-server --target ${{ matrix.target }}
 
-      - name: Verify static linking
-        run: file target/${{ matrix.target }}/release/aiwork-server
-
-      - name: Package portable bundle
+      - name: Package bundle
         run: |
           mkdir -p pkg
           cp target/${{ matrix.target }}/release/aiwork-server pkg/
           chmod +x pkg/aiwork-server
           cp -r dist pkg/web-dist
-          cp scripts/start.sh pkg/start.sh
+          cat > pkg/start.sh <<'START_SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$(dirname "$0")"
+          [ -x ./aiwork-server ] || { echo "missing aiwork-server"; exit 1; }
+          [ -d ./web-dist ] || { echo "missing web-dist"; exit 1; }
+          DATA_DIR="${DATA_DIR:-$PWD/data}"
+          mkdir -p "$DATA_DIR"
+          exec env \
+            AIWORK_WEB_DIST="$PWD/web-dist" \
+            AIWORK_DATA_DIR="$DATA_DIR" \
+            ./aiwork-server
+          START_SH
           chmod +x pkg/start.sh
-          {
-            echo "AIWork Assistant portable package"
-            echo ""
-            echo "Start:        ./start.sh"
-            echo "Custom port:  PORT=9090 ./start.sh"
-            echo "Custom data:  DATA_DIR=/var/lib/aiwork ./start.sh"
-            echo ""
-            echo "Admin token:  cat data/conf/admin_token (after first start)"
-          } > pkg/README.txt
           tar czf aiwork-assistant-linux-${{ matrix.arch }}.tar.gz -C pkg .
 
-      - name: Upload to Release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiwork-linux-${{ matrix.arch }}
+          path: aiwork-assistant-linux-${{ matrix.arch }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: aiwork-assistant-linux-${{ matrix.arch }}.tar.gz
-          generate_release_notes: true
+          tag_name: build-${{ github.run_number }}
+          name: TraeWorkAssistant Portable ${{ github.event.inputs.ref }}
+          files: aiwork-assistant-linux-*.tar.gz
