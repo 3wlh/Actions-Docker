@@ -1,0 +1,88 @@
+name: Release Portable Package (binary + web-dist)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            target: x86_64-unknown-linux-musl
+          - arch: arm64
+            target: aarch64-unknown-linux-musl
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------- 前端 ----------
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+
+      # ---------- Rust 静态编译（musl，不依赖目标机 glibc 版本） ----------
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cargo-zigbuild
+        run: pip install cargo-zigbuild
+
+      - uses: Swatinem/rust-cache@v2
+        with: { key: musl-${{ matrix.target }} }
+
+      - name: Build static binary
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          cargo zigbuild --release -p aiwork-server \
+            --target ${{ matrix.target }}
+
+      # ---------- 打包：二进制 + web-dist + start.sh ----------
+      - name: Package portable bundle
+        run: |
+          mkdir -p pkg
+          # 二进制
+          cp target/${{ matrix.target }}/release/aiwork-server pkg/
+          chmod +x pkg/aiwork-server
+          # 前端（重命名为 web-dist，与 start.sh 约定一致）
+          cp -r dist pkg/web-dist
+          # 启动脚本
+          cp scripts/start.sh pkg/start.sh
+          chmod +x pkg/start.sh
+          # 说明文件
+          cat > pkg/README.txt <<'EOF'
+          AIWork Assistant 便携包
+
+          启动:   ./start.sh
+          自定义端口:  PORT=9090 ./start.sh
+          自定义数据目录: DATA_DIR=/var/lib/aiwork ./start.sh
+
+          首次启动后查看管理令牌:
+            cat data/conf/admin_token
+
+          浏览器访问: http://<服务器IP>:8080
+          EOF
+
+          cd pkg
+          tar czf ../aiwork-assistant-linux-${{ matrix.arch }}.tar.gz *
+
+      # 验证二进制确实是静态的（musl 版专属检查）
+      - name: Verify static
+        run: |
+          file target/${{ matrix.target }}/release/aiwork-server \
+            | grep -q "statically linked" \
+            || (echo "警告: 非静态链接，检查 zigbuild 参数" && exit 1)
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: aiwork-assistant-linux-${{ matrix.arch }}.tar.gz
+          generate_release_notes: true
