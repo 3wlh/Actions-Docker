@@ -106,7 +106,7 @@ jobs:
           path: aiwork-assistant-linux-${{ matrix.arch }}.tar.gz
 
   release:
-    needs: Release
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
