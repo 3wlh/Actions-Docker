@@ -7,13 +7,13 @@ on:
         description: "仓库分支"
         required: false
         default: 'docker_main'
-        
-     upx:
+         
+      upx:
         description: "是否用 UPX 压缩二进制"
         required: false
         type: boolean
         default: true
-
+        
 permissions:
   contents: write
 
@@ -106,7 +106,7 @@ jobs:
           path: aiwork-assistant-linux-${{ matrix.arch }}.tar.gz
 
   release:
-    needs: build
+    needs: Release
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
